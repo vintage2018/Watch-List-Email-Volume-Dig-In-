@@ -1,0 +1,93 @@
+import pandas as pd
+import numpy as np
+import datetime as dt
+import calendar
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from matplotlib.ticker import FormatStrFormatter
+
+#read in subscriber's data 
+df_users = pd.read_excel('file_path', sheet_name = '', header = 0, date_parser = True)
+df_users
+df_users.info()
+
+#check the engagement distribution
+df_users['Engagement'].value_counts()
+
+#exclude users who have opted-out or hardbounced
+df_users = df_users.drop(list(df_users[df_users['Engagement'] == 'hardbounce'].index.values), axis = 0)
+df_users = df_users.drop(list(df_users[df_users['Engagement'] == 'optout'].index.values ), axis = 0)
+
+#filtered new user data
+df_users
+df_users['Engagement'].value_counts()
+df_users.info()
+
+#read in dormant subscriber list and exclue them from df_users
+df_dormant_users = pd.read_csv('file_path2', header = None )
+df_dormant_users.columns = ['Email']
+df_dormant_users.head()
+
+#check if the users in df_users also in df_dormant_users, if so, drop those rows from df_users
+df_users = df_users.drop(list(df_users[df_users['Email'].isin(df_dormant_users['Email'])].index.values) , axis=0)
+df_users.info()
+df_users.tail()
+
+#strip the [""] 
+df_users.loc[:,'watchlist2'] = df_users.watchlist.apply(lambda x: [s.strip('"') for s in x.strip(']').strip('[').split(',')])
+
+#seperate the tickers in the 
+def separate_col_to_rows(df, col_to_separate):
+    return df[np.setdiff1d(df.columns, col_to_separate)].join(df[col_to_separate].apply(lambda x: pd.Series(x)).stack().reset_index(level=1, drop=True).to_frame(col_to_separate), how='right').reset_index(drop=True)
+df_users = separate_col_to_rows(df_users, 'watchlist2')
+
+df_users
+df_users = df_users.sort_values(by = ['List Signup'], ascending=True)
+df_users.head()
+
+#read in and format tickerized content dataframe
+df_content = pd.read_csv('file_path3', parse_dates = ['first_publish_timestamp'])
+df_content.head()
+
+df_content = df_content.drop(['live_on_site','node_id','timelessness'], axis =1)
+df_content = df_content.sort_values(['first_publish_timestamp','tickers2'])
+df_content.head()
+df_content.tail()
+
+#create nested loops to iterate over days and month
+monthly_results =[]
+daily_results = []
+daily_results_total = []
+
+for j in range(1,7): 
+    for i in range (1, (calendar.monthrange(2018,j)[1]+1)):  #date from 1 to the last day of the month       
+        if dt.date.weekday(dt.date(2018,j,i)) in [5,6]:   #check if weekday, dt.weekday() returns integer 0-6, 5 is Saturday, 6 is Sunday
+            daily_email_count = 0
+            daily_results.append(daily_email_count)
+        else:
+            if j == 1 and i ==1: 
+                df_content_daily = df_content[(df_content['first_publish_timestamp'] > dt.datetime(2017,12,31, 6,30)) & (df_content['first_publish_timestamp'] < dt.datetime(2018,1,1,6,30))]               
+            elif i == 1:
+                df_content_daily = df_content[(df_content['first_publish_timestamp'] > dt.datetime(2018,(j-1), (calendar.monthrange(2018,(j-1))[1]),6,30)) & (df_content['first_publish_timestamp'] < dt.datetime(2018,j,i,6,30))]                
+            else:
+                df_content_daily = df_content[(df_content['first_publish_timestamp'] > dt.datetime(2018,j,(i-1),6,30)) &  (df_content['first_publish_timestamp'] < dt.datetime(2018,j,i,6,30))]
+            df_users_daily = df_users[df_users['Signup'] < dt.date(2018,j,i)]
+            df = df_users_daily[df_users_daily['watchlist2'].isin(df_content_daily['tickers2'].unique())]    
+            daily_email_count = df['Email'].nunique()
+            daily_results.append(daily_email_count)  
+    monthly_email_count = sum(daily_results)
+    monthly_results.append(monthly_email_count)
+    print(j, i , monthly_email_count)
+    print(j, daily_results)
+		
+		
+#plot the result
+plt.plot(monthly_results)
+plt.ylabel('Count of Emails')
+plt.xlabel('2018')
+plt.xticks(np.arange(6),('Jan', 'Feb', 'Mar', 'April', 'May', 'June'))
+#lt.gca().yaxis.set_major_formatter(FormatStrFormatter('%d m'))
+#lt.yticks(np.arange(0, 1, step=0.2))  
+plt.title("Watchlist Email Volume")
+plt.show()
+    daily_results = []
